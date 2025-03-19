@@ -433,6 +433,7 @@ class XtQuantTrader(object):
         req.m_strOrderRemarkNew = order_remark
         req.m_dOrderAmount = order_volume
         req.m_strStockCode1 = stock_code
+        req.m_strAccountID1 = account.account_id
 
         seq = self.async_client.nextSeq()
         self.queuing_order_seq.add(seq)
@@ -466,6 +467,7 @@ class XtQuantTrader(object):
         req.m_strOrderRemarkNew = order_remark
         req.m_dOrderAmount = order_volume
         req.m_strStockCode1 = stock_code
+        req.m_strAccountID1 = account.account_id
         
         seq = self.async_client.nextSeq()
         self.queuing_order_seq.add(seq)

@@ -35,7 +35,6 @@ __all__ = [
     , 'download_index_weight'
     , 'get_holidays'
     , 'get_trading_calendar'
-    , 'get_trading_time'
     , 'get_etf_info'
     , 'download_etf_info'
     , 'get_main_contract'
@@ -220,7 +219,13 @@ f'''***** xtdata连接成功 *****
     return
 
 
-def get_current_data_dir():
+def get_data_dir():
+    '''
+    如果更改过`xtdata.data_dir`变量的值，优先返回变量设置的值
+    没有设置过，返回服务的数据路径
+    注意----设置`xtdata.data_dir`的值可以强制指定读取本地数据的位置，谨慎修改
+    '''
+    cl = get_client()
     global data_dir
     global __data_dir_from_server
     return data_dir if data_dir != None else __data_dir_from_server
@@ -391,7 +396,7 @@ def get_market_data_ori(
     global debug_mode
 
     if data_dir == None:
-        data_dir = get_current_data_dir()
+        data_dir = get_data_dir()
 
     return client.get_market_data3(field_list, stock_list, period, start_time, end_time, count, dividend_type, fill_data, 'v2', enable_read_from_local, enable_read_from_server, debug_mode, data_dir)
 
@@ -477,7 +482,7 @@ def get_market_data_ex_ori(
     global debug_mode
 
     if data_dir == None:
-        data_dir = get_current_data_dir()
+        data_dir = get_data_dir()
 
     return client.get_market_data3(field_list, stock_list, period, start_time, end_time, count, dividend_type, fill_data, 'v3', enable_read_from_local, enable_read_from_server, debug_mode, data_dir)
 
@@ -556,7 +561,7 @@ def _get_market_data_ex_ori_221207(
     global debug_mode
 
     if data_dir == None:
-        data_dir = get_current_data_dir()
+        data_dir = get_data_dir()
 
     ret = client.get_market_data3(field_list, stock_list, period, start_time, end_time, count, dividend_type, fill_data, 'v4', enable_read_from_local,
                                   enable_read_from_server, debug_mode, data_dir)
@@ -753,15 +758,10 @@ def _get_market_data_ex_tuple_period(
     return ori_data
 
 
-def get_data_dir():
-    cl = get_client()
-    return _OS_.path.abspath(cl.get_data_dir())
-
-
 def get_local_data(field_list=[], stock_list=[], period='1d', start_time='', end_time='', count=-1,
                               dividend_type='none', fill_data=True, data_dir=None):
     if data_dir == None:
-        data_dir = get_current_data_dir()
+        data_dir = get_data_dir()
 
     if period in {'1m', '5m', '15m', '30m', '60m', '1h', '1d', '1w', '1mon', '1q', '1hy', '1y'}:
         return _get_market_data_ex_ori_221207(field_list, stock_list, period, start_time, end_time, count,
@@ -1727,6 +1727,8 @@ def get_trading_calendar(market, start_time = '', end_time = ''):
     :param start_time: str 起始时间 '20200101'
     :param end_time: str 结束时间 '20201231'
     :return:
+
+    note: 如果想查看节假日还没有公布的未来交易日，可以使用get_coming_trade_date函数，但结果不一定准确
     '''
     import datetime as dt
 
@@ -1773,32 +1775,6 @@ def get_trading_calendar(market, start_time = '', end_time = ''):
 
     return [tt.strftime('%Y%m%d') for tt in res]
 
-
-def get_trading_time(stockcode):
-    '''
-    返回指定股票的交易时段
-    :param stockcode:  代码.市场  例如 '600000.SH'
-    :return: 返回交易时段列表，第一位是开始时间，第二位结束时间，第三位交易类型   （2 - 开盘竞价， 3 - 连续交易， 8 - 收盘竞价， 9 - 盘后定价）
-    :note: 需要转换为datetime时，可以用以下方法转换
-            import datetime as dt
-            dt.datetime.combine(dt.date.today(), dt.time()) + dt.timedelta(seconds = 34200)
-    '''
-    cl = get_client()
-
-    split_codes = stockcode.rsplit('.', 1)
-    if len(split_codes) == 2:
-        code = split_codes[0]
-        market = split_codes[1]
-    else:
-        return []
-
-    inst = _BSON_call_common(
-        cl.commonControl, 'gettradingtime', {
-            'market': market
-            , 'code': code
-        }
-    )
-    return inst.get('result', [])
 
 def is_stock_type(stock, tag):
     client = get_client()
@@ -2789,6 +2765,26 @@ def get_quote_server_status():
     return result
 
 
+def show_quote_server_status():
+    '''
+    获取每个key对应的连接的地址
+    返回：dict，{'0_SH_L1':'ip:port', ...}
+    '''
+    result = {}
+    cl = get_client()
+
+    inst = _BSON_call_common(
+        cl.commonControl, 'getquoteserverstatus', {}
+    )
+    inst = inst.get('result', [])
+
+    for data in inst:
+        key = data.get('key', '')
+        info = data.get('info', {})
+        result[key] = f"{info.get('ip', '')}:{info.get('port', '')}"
+    return result
+
+
 def watch_quote_server_status(callback):
     '''
     监控全局连接状态变化
@@ -2807,7 +2803,7 @@ def watch_quote_server_status(callback):
     _BSON_call_common(cl.commonControl, "watchquoteserverstatus", {})
     return
 
-def fetch_quote(root_path, key_list):
+def fetch_quote_server_from_config(root_path, key_list):
     root_path = _OS_.path.abspath(root_path)
     cl = get_client()
     inst = _BSON_call_common(
@@ -3263,20 +3259,58 @@ def get_trading_contract_list(stockcode, date = None):
 
 def get_trading_period(stock_code):
     '''
-    获取合约最新交易时间段
-    stock_code: 合约市场代码，例如：600000.SH
-    返回值：dict
-        {market, codeRegex, product, category, tradings: [type, bartime:[dayoffset, start, end]]}
-    market:市场
-    codeRegex:代码匹配规则
-    product:产品类型
-    category:证券分类
-    codeRegex, product, category，三个规则，每次只有一个规则有数据。数据中*代表任意
-    tradings, list:
-        type:交易类型(2盘前竞价，3连续交易，8尾盘竞价)
-        dayoffset:交易日偏移
-        start, int:开始时间,时分秒
-        end, int:结束时间,时分秒
+    获取指定品质真实交易时间段
+    stock_code: str 合约代码
+
+    返回：dict
+        {
+            'market': market,
+            'codeRegex': codeRegex,
+            'product': [ product_code1, product_code2, ... ],
+            'category': [ category1, category2, ... ],
+            'tradings': [ trading_period1, trading_period2, ... ],
+        }
+        market: str 市场代码
+        codeRegex: str 代码匹配规则
+        product_code: str 产品代码
+        category: int 证券分类
+
+        通过指定stock_code获取到的交易时段信息已经是和这个品种匹配的，
+        通常不需要使用codeRegex, product, category这三个字段
+
+        trading_period: dict 交易时段
+            {
+                'status': status,
+                'time': [
+                    trading_day_offset
+                    , [ begin_time, boundary_type ]
+                    , [ end_time, boundary_type ]
+                ],
+            }
+
+            status: int 交易时段类型
+                2 - 盘前竞价
+                3 - 连续交易
+                8 - 尾盘竞价
+                15 - 集合竞价对盘时段(港股)
+
+            trading_day_offset: int 交易日偏移
+
+            begin_time: int 开始时间, 时分秒
+                例如 930000 表示 09:30:00
+                    1130000 表示 11:30:00
+                特殊地，负数表示小时为0点以前的时间，例如 -45500 表示前一个自然日的 20:55:00
+                超过24小时的时间，表示24点后的时间，例如 263000 表示下一个自然日的 02:30:00
+
+            end_time: int 结束时间, 时分秒
+
+            boundary_type: int 边界类型, 范围为 -1 0 1
+                以begin_time为例,
+                -1表示边界时间点小于begin_time
+                0表示边界时间点等于begin_time
+                1表示边界时间点大于begin_time
+                例如begin_time为93000, boundary_type为1, 则开始时间为09:30:00之后，且09:30:00不在范围内
+                例如end_time为210000, boundary_type为-1, 则结束时间为21:00:00之前，且21:00:00不在范围内
     '''
     cl = get_client()
 
@@ -3284,7 +3318,7 @@ def get_trading_period(stock_code):
         cl.commonControl
         , 'getopenclosetradetimebystock'
         , {
-            "stockMarket" : stock_code
+            "stockcode" : stock_code
         }
     )
 
@@ -3293,7 +3327,71 @@ def get_trading_period(stock_code):
 
 def get_kline_trading_period(stock_code):
     '''
-    与交易时间相似，区别在于把尾盘竞价和盘中交易合并
+    获取指定品种的K线时段
+
+    stock_code: str 合约代码
+
+    返回: dict
+        {
+            'market': market,
+            'codeRegex': codeRegex,
+            'product': [ product_code1, product_code2, ... ],
+            'category': [ category1, category2, ... ],
+            'tradings': [ trading_period1, trading_period2, ... ],
+        }
+
+        market: str 市场代码
+        codeRegex: str 代码匹配规则
+        product_code: str 产品代码
+        category: int 证券分类
+
+        通过指定stock_code获取到的交易时段信息已经是和这个品种匹配的，
+        通常不需要使用codeRegex, product, category这三个字段
+
+        trading_period: dict 交易时段
+            { 'type': type, ... }
+
+            type: str 交易时段类型
+                'auction' - 竞价交易
+                'continuous' - 连续交易
+            type为不同类型时，其余字段内容不同
+
+            type为auction时，字段内容如下：
+            {
+                'type': 'auction',
+                'source': [
+                    trading_day_offset
+                    , [ begin_time, boundary_type ]
+                    , [ end_time, boundary_type ]
+                ],
+                'bartime': [ trading_day_offset, target_time ],
+            }
+            使用竞价交易时段合并K线时，任何在source范围内的tick数据都应该被视为时间点为bartime的tick数据
+
+            type为continuous时，字段内容如下：
+            {
+                'type': 'continuous',
+                'bartime': [ trading_day_offset, begin_time, end_time ],
+            }
+            使用连续交易时段合并K线时，在begin_time和end_time之间的tick数据按具体K线周期合并为K线
+
+            trading_day_offset: int 交易日偏移
+
+            begin_time: int 开始时间, 时分秒
+                例如 930000 表示 09:30:00
+                    1130000 表示 11:30:00
+                特殊地，负数表示小时为0点以前的时间，例如 -45500 表示前一个自然日的 20:55:00
+                超过24小时的时间，表示24点后的时间，例如 263000 表示下一个自然日的 02:30:00
+
+            end_time: int 结束时间, 时分秒
+
+            boundary_type: int 边界类型, 范围为 -1 0 1
+                以begin_time为例,
+                -1表示边界时间点小于begin_time
+                0表示边界时间点等于begin_time
+                1表示边界时间点大于begin_time
+                例如begin_time为93000, boundary_type为1, 则开始时间为09:30:00之后，且09:30:00不在范围内
+                例如end_time为210000, boundary_type为-1, 则结束时间为21:00:00之前，且21:00:00不在范围内
     '''
     cl = get_client()
 
@@ -3301,7 +3399,7 @@ def get_kline_trading_period(stock_code):
         cl.commonControl
         , 'getopencloseklinetimebystock'
         , {
-            "stockMarket": stock_code
+            "stockcode": stock_code
         }
     )
 
@@ -3310,7 +3408,7 @@ def get_kline_trading_period(stock_code):
 
 def get_all_trading_periods():
     '''
-    获取全部市场划分出来的交易时间段
+    获取全部市场的真实交易时间段
     '''
     cl = get_client()
 
@@ -3326,7 +3424,7 @@ def get_all_trading_periods():
 
 def get_all_kline_trading_periods():
     '''
-    获取全部市场划分出来的K线交易时间段
+    获取全部市场的分割K线交易时间段
     '''
     cl = get_client()
 
@@ -3346,6 +3444,14 @@ def get_authorized_market_list():
     返回 list
     '''
     return _BSON_call_common(get_client().commonControl, 'getauthorizedmarketlist', {}).get('result', [])
+
+
+def get_coming_trade_date():
+    '''
+    未来交易日函数，推测出的交易日不一定准确
+    note: get_trading_calendar是准确的，是根据节假日列表推算的当年的交易日
+    '''
+    return _BSON_call_common(get_client().commonControl, 'getcomingtradedate', {}).get('result', [])
 
 
 from .metatable import *
