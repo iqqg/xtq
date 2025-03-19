@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='xtquant',
-    version='xtquant241014.1.2',
+    version='24.10.14',
     # py_modules=['xttools', 'xtdata', 'xttrader', 'xttype', 'xtutil', 'xtconstant', 'xtconn', 'xtdata_config', 'xtdatacenter', 'xtextend', 'xtview'],
     # package_dir={'': '.'},
     packages=['xtquant', 'xtbson', 'qmttools', 'metatable'],
