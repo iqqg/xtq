@@ -21,13 +21,13 @@ def cp(s = None):
 
 # 交易回调类
 class XtQuantTraderCallback(object):
-    def on_connected(self):
+    def on_connected(self, session):
         """
         连接成功推送
         """
         pass
         
-    def on_disconnected(self):
+    def on_disconnected(self, session):
         """
         连接断开推送
         """
@@ -115,6 +115,7 @@ class XtQuantTrader(object):
 
         self.async_client = _XTQC_.XtQuantAsyncClient(path.encode('gb18030'), 'xtquant', session)
         self.callback = callback
+        self.session = session
 
         self.connected = False
 
@@ -241,7 +242,7 @@ class XtQuantTrader(object):
             
         def on_push_disconnected():
             if self.callback:
-                self.callback.on_disconnected()
+                self.callback.on_disconnected(self.session)
 
         if enable_push:
             self.async_client.bindOnDisconnectedCallback(on_common_push_callback_wrapper(0, on_push_disconnected))
