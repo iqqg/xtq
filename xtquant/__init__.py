@@ -12,7 +12,7 @@ def check_for_update(package_name):
     response = requests.get(f"https://pypi.org/pypi/{package_name}/json", timeout = 10)
     if response.status_code == 200:
         latest_version = response.json()['info']['version']
-        if "250516.1.1" != latest_version:
+        if "xtquant250516.1.1" != latest_version:
             print(f"xtquant{latest_version}已经发布,前往 http://dict.thinktrader.net/nativeApi/download_xtquant.html 查看更新说明\n")
         else:
             print("xtquant文档地址：http://dict.thinktrader.net/nativeApi/start_now.html")
