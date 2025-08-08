@@ -1,6 +1,6 @@
 #coding: utf-8
 
-__version__ = "xtquant"
+__version__ = "250516.1.1"
 
 
 def check_for_update(package_name):
